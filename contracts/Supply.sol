@@ -13,6 +13,7 @@ contract Supply {
         string packetInfo;
         PacketState state;
         Entities lastUpdateBy;
+        address addressOfSigner;
         address payable shipper;
         address transporter;
         address consigner;
@@ -74,6 +75,7 @@ contract Supply {
         Entities _memberType
     ) public {
         require(_memberAddress != address(0), "Zero address not allowed");
+        require(_memberAddress != manager, "Manager can not be a member");
         require(msg.sender == manager, "Only Manager can add members");
         require(
             isShipper[_memberAddress] == false &&
@@ -81,7 +83,12 @@ contract Supply {
                 isConsigner[_memberAddress] == false,
             "Member exist"
         );
-        members[curMemId] = Member(_memberName, _memberAddress, _memberType);
+        members.push(Member(_memberName, _memberAddress, _memberType));
+
+        // setting in mapping
+        getMember[_memberAddress] = members[curMemId];
+
+        // incrementing for next
         curMemId++;
 
         // adding to mapping
@@ -98,15 +105,15 @@ contract Supply {
     function createCargo(
         uint256 _price,
         string memory _packetInfo,
-        address _shipper,
-        address _tansporter,
+        // address _shipper,
+        address _transporter,
         address _consigner
     ) public {
+        address _shipper = msg.sender;
+
         // not zero addresses
         require(
-            _shipper != address(0) ||
-                _tansporter != address(0) ||
-                _consigner != address(0),
+            _transporter != address(0) || _consigner != address(0),
             "Zero address not allowed"
         );
 
@@ -120,7 +127,7 @@ contract Supply {
         require(isShipper[_shipper] == true, "Shipper not allowed");
 
         // check tansporter
-        require(isTransporter[_tansporter] == true, "Transporter not allowed");
+        require(isTransporter[_transporter] == true, "Transporter not allowed");
 
         // check consigner
         require(isConsigner[_consigner] == true, "Consigner not allowed");
@@ -134,8 +141,9 @@ contract Supply {
                 _packetInfo,
                 PacketState.Packed,
                 Entities.Shipper,
+                _shipper,
                 payable(_shipper),
-                _tansporter,
+                _transporter,
                 _consigner
             )
         );
@@ -158,7 +166,7 @@ contract Supply {
         // you are not authorized to sign the tansport
         require(
             packet[_id].transporter == msg.sender,
-            "you are not authorized to sign the tansport"
+            "you are not authorized to sign the transport"
         );
 
         // checking packet state
@@ -170,6 +178,7 @@ contract Supply {
         // updating packet info
         packet[_id].state = PacketState.Dispatched;
         packet[_id].lastUpdateBy = Entities.Transporter;
+        packet[_id].addressOfSigner = msg.sender;
     }
 
     // signing at consigner
@@ -193,22 +202,28 @@ contract Supply {
         );
 
         // need to do payments while delivery
-        (bool success, ) = packet[_id].shipper.call{value: packet[_id].price}(
-            ""
-        );
-        require(success == true, "Fund transfer error");
+        (bool success, ) = packet[_id].shipper.call{
+            value: packet[_id].price * 10**18
+        }("");
+        require(success == true, "Not Enough Funds");
 
         // updating packet info
         packet[_id].state = PacketState.Delivered;
         packet[_id].lastUpdateBy = Entities.Consigner;
+        packet[_id].addressOfSigner = msg.sender;
     }
 
     // getting packet info
     function getPacket(uint256 _id) public view returns (Packet memory) {
         return packet[_id];
     }
-}
 
-// 0x4B0897b0513fdC7C541B6d9D7E929C4e5364D2dB
-// 0x583031D1113aD414F02576BD6afaBfb302140225
-// 0xdD870fA1b7C4700F2BD7f44238821C26f7392148
+    // get member info
+    function getMemberInfo(address _memberAddress)
+        public
+        view
+        returns (Member memory)
+    {
+        return getMember[_memberAddress];
+    }
+}
